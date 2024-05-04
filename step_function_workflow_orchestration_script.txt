@@ -1,0 +1,35 @@
+{
+  "Comment": "A workflow to handle data extraction, transformation, and cataloging",
+  "StartAt": "ExtractAndWriteLambda",
+  "States": {
+    "ExtractAndWriteLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:835612217101:function:extract-and-write-lambda",
+      "Next": "RawS3FileCrawler"
+    },
+    "RawS3FileCrawler": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "raw-S3-file-crawlere"
+      },
+      "Next": "TransformEtlJob"
+    },
+    "TransformEtlJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startJobRun",
+      "Parameters": {
+        "JobName": "tranform_columns_job"
+      },
+      "Next": "AggregationEtlJob"
+    },
+    "AggregationEtlJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startJobRun",
+      "Parameters": {
+        "JobName": "aggregation_job"
+      },
+      "End": true
+    }
+  }
+}
