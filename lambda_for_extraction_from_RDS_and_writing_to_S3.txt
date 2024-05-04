@@ -1,0 +1,62 @@
+import boto3
+import pymysql
+import csv
+from io import StringIO
+from datetime import datetime
+
+def lambda_handler(event, context):
+    current_date_time = datetime.now()
+    # Database connection details
+    host = 'salesdb.clfrgvqyu1ed.ap-south-1.rds.amazonaws.com'
+    user = 'admin'
+    password = ********
+    database = 'sales'
+    
+    # Initialize DynamoDB and RDS clients
+    dynamodb = boto3.client('dynamodb')
+    connection = pymysql.connect(host=host, user=user, password=password, db=database)
+    
+    # Get the last processed timestamp from DynamoDB
+    response = dynamodb.get_item(TableName='time_stamp_table', Key={'id': {'S': 'orderTimestamp1'}})
+    last_processed_timestamp = response['Item']['last_processed_timestamp']['S']
+    
+    print("Last Processed Timestamp:", last_processed_timestamp)
+    try:
+        with connection.cursor() as cursor:
+            # SQL query to extract data, ensuring the timestamp is properly quoted
+            sql = f"SELECT * FROM sales_orders WHERE last_updated > '{last_processed_timestamp}'"
+            cursor.execute(sql)
+            result = cursor.fetchall()
+            
+            # Check if there are new records and update the timestamp in DynamoDB
+            if result:
+                latest_timestamp = max([record[-1] for record in result])  # Adjust index according to your data structure
+                dynamodb.update_item(
+                    TableName='time_stamp_table',
+                    Key={'id': {'S': 'orderTimestamp1'}},
+                    UpdateExpression='SET last_processed_timestamp = :val',
+                    ExpressionAttributeValues={':val': {'S': latest_timestamp.strftime('%Y-%m-%d %H:%M:%S')}}
+                )
+
+            # Prepare CSV data
+            csv_buffer = StringIO()
+            csv_writer = csv.writer(csv_buffer)
+            csv_writer.writerow([i[0] for i in cursor.description])  # write headers
+            csv_writer.writerows(result)
+            csv_buffer.seek(0)
+            
+            # Upload CSV data to S3
+            s3 = boto3.client('s3')
+            s3.put_object(Bucket='primary-bucket-1', Key=f'data-store/data_{current_date_time}.csv', Body=csv_buffer.getvalue())
+            
+    finally:
+        connection.close()
+
+    return {
+        'statusCode': 200,
+        'body': 'Data extracted and stored in S3 successfully'
+    }
+
+
+
+        
